@@ -82,6 +82,26 @@ GitHub Actions.
 - Upgrade path: on a new Firefox release `bump-upstream.sh` moves the pin and the GeckoView build ID;
   patches must be re-checked with `apply-overlay.sh --reapply`.
 
+## Testing on an Android emulator (GitHub)
+
+The sandbox is x86 without KVM, so it cannot run the arm64 app. GitHub's Linux runners can run an
+x86_64 Android emulator with hardware acceleration, so the **Emulator test** workflow does that:
+
+1. Builds an **x86_64** APK (`SAHARA_ABI=x86_64`; Mozilla publishes `geckoview-omni-x86_64` for the same
+   build ID, so it is the same Firefox 157.0.1 engine, just for the emulator's CPU).
+2. Boots an emulator (Pixel 6 profile, API 35 by default), installs the APK and runs
+   `scripts/emulator-smoke-test.sh`: cold start, a page loaded from a small web server on the host
+   (**the server's own log proves the page was fetched and its JavaScript ran**, because Gecko's page content
+   is invisible to Android's UI tools), a crash/ANR/native-crash scan of logcat, and optional checks that the
+   package id and launcher label are what Phase 1 promises.
+3. Uploads `emulator-results` (report, screenshots, logcat, UI dumps, server log) as an artifact and prints the
+   report in the run summary.
+
+Start it from the Actions tab ("Emulator test", Run workflow). To iterate on the test script alone, give
+`apk_run_id` the run id of an earlier x86_64 build: the 40-minute build is skipped and only the emulator
+part (about 10 to 15 minutes) runs. This tests the same code as the phone build but not arm64-specific
+behaviour; that last step is trying the arm64 APK on a real phone.
+
 ## Signing key
 
 **Decision (2026-10-09): no permanent key for now.** Sahara is personal and will not be released, so nobody

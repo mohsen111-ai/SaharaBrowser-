@@ -43,7 +43,7 @@ scripts/bump-upstream.sh     # move the pin to the newest final release (review 
 
 scripts/bootstrap-android.sh # once per machine: JDK, Android SDK, nimbus-fml
 scripts/build.sh release     # build the arm64 APK (unsigned); see docs/BUILD.md
-scripts/make-keystore.sh     # create the signing key (once, keep it forever)
+scripts/make-keystore.sh     # optional: create a permanent signing key (CI uses a one-off key otherwise)
 scripts/sign-apk.sh          # align and sign the APK with that key
 ```
 

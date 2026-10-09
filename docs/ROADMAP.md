@@ -11,6 +11,7 @@ Nothing below is implemented yet except where ticked.
 | Upstream | Firefox for Android 157.0.1 from Mozilla's official tarball; bump monthly |
 | Repo shape | Overlay (new files) + patches (edits); no copy of Firefox in the repo |
 | App icon | Option 5, "Cream sun" |
+| Signing key | None for now: CI signs each build with a one-off key; uninstall the old build before installing the next. Revisit when Sahara becomes the daily browser |
 | Dune Shield default | **Strict, tuned so sites keep working**; Balanced available; per-site Strict / Balanced / Off |
 | Downloads | Easy way first (segmented downloads on the existing network layer), benchmark, and only then decide on a deep engine patch |
 | Wallpapers | All 61 (31 still, 30 live), drawn in code |
@@ -24,7 +25,7 @@ Nothing below is implemented yet except where ticked.
 - [x] Architecture, design spec, per-feature plans
 - [x] Unmodified pinned upstream builds into an arm64 APK, from a pristine tree, via scripts ([BUILD.md](BUILD.md))
 - [ ] CI workflow (manual trigger) that builds, signs and uploads the APK: written, not yet run
-- [ ] Signing key created and stored as CI secrets
+- [x] Signing: no permanent key by decision; CI signs with a one-off key (each update means uninstall first). Optional later, see [BUILD.md](BUILD.md#signing-key)
 
 ### Phase 1: identity and theme
 - [ ] App id `app.sahara.browser`, name "Sahara", Mozilla branding removed

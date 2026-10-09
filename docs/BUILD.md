@@ -84,15 +84,22 @@ GitHub Actions.
 
 ## Signing key
 
-Generate **one** keystore and keep it forever: Android only installs an update over an app signed with the
-same key, so losing it means uninstalling (and losing app data) to move to a new one.
+**Decision (2026-10-09): no permanent key for now.** Sahara is personal and will not be released, so nobody
+has to create or look after a key. The workflow signs every build with a **one-off key** it makes by itself.
 
-- Create it with `scripts/make-keystore.sh` on a trusted machine; back it up somewhere safe.
-- Store it in CI as encrypted repository secrets: `SAHARA_KEYSTORE_BASE64`, `SAHARA_KEYSTORE_PASS`,
-  `SAHARA_KEY_ALIAS` (the script prints exactly what to paste). Without them the workflow signs with a
-  one-off temporary key so a first test build can still be installed; such a build cannot be updated in
-  place by a later build signed with the permanent key.
-- It is git-ignored (`*.keystore`, `*.jks`, `keystore.properties`); never commit it.
+Android still requires every APK to carry *a* signature, and it will only install an update over an app
+signed with the **same** key. The consequence of one-off keys: each new build has a different signature, so
+you **uninstall the previous Sahara before installing the next one**, which erases the app's data (bookmarks,
+logins, settings). That is fine for test builds. It will become annoying once Sahara is the browser you use
+every day, and that is the moment to pick one of these (an optional, one-time step):
+
+- **Your own key** (best): `scripts/make-keystore.sh` makes it; add the three secrets it prints
+  (`SAHARA_KEYSTORE_BASE64`, `SAHARA_KEYSTORE_PASS`, `SAHARA_KEY_ALIAS`) under Settings > Secrets and
+  variables > Actions. The workflow uses them automatically. Keep the keystore file and password safe:
+  losing them means an uninstall to move to a new key. It is git-ignored; never commit it.
+- A fixed key kept in the repository: updates install in place with zero setup, but the repository is
+  public, so anyone could sign an APK that Android would accept as an update to your Sahara (you would still
+  have to tap install). Only sensible if the repository is made private.
 
 ## Installing
 

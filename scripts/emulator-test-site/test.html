@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sahara emulator test page</title>
+<style>
+  /* Magenta fill: easy to find in a screenshot, and not a colour any Sahara theme uses. */
+  html, body { margin: 0; height: 100%; background: #ff00ff; color: #000; font: 28px sans-serif; }
+  main { padding: 48px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sahara test page</h1>
+  <p id="js">JavaScript did not run.</p>
+</main>
+<script>
+  // The test server logs every request, so this beacon proves that the page loaded AND that JavaScript ran.
+  document.getElementById('js').textContent = 'JavaScript ran.';
+  fetch('/beacon?js=ok&ua=' + encodeURIComponent(navigator.userAgent)).catch(function () {});
+</script>
+</body>
+</html>

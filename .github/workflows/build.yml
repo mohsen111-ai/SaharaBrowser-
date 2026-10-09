@@ -1,6 +1,6 @@
 name: Build Sahara
 
-# Manual only: a build is long and heavy, so it never runs by accident.
+# Manual only (a build is long and heavy, so it never runs by accident), or called by the emulator test.
 on:
   workflow_dispatch:
     inputs:
@@ -9,13 +9,33 @@ on:
         type: choice
         options: [release, debug]
         default: release
+      abi:
+        description: arm64-v8a is the phone build; x86_64 only exists so CI can run it on an emulator
+        type: choice
+        options: [arm64-v8a, x86_64]
+        default: arm64-v8a
       publish:
-        description: Attach the APK to a GitHub release (easiest to download on a phone)
+        description: Attach the APK to a GitHub release (the repository is PUBLIC, so anyone could download it)
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      variant:
+        type: string
+        default: release
+      abi:
+        type: string
+        default: arm64-v8a
+      publish:
+        type: boolean
+        default: false
+    outputs:
+      artifact:
+        description: Name of the uploaded APK artifact
+        value: ${{ jobs.build.outputs.artifact }}
 
 concurrency:
-  group: build
+  group: build-${{ inputs.abi }}-${{ inputs.variant }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -23,7 +43,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     permissions:
-      contents: write   # only used when "publish" is ticked
+      contents: read
+    outputs:
+      artifact: ${{ steps.meta.outputs.artifact }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +58,20 @@ jobs:
           sudo docker image prune --all --force || true
           df -h /
 
+      # Dependencies and toolchains are identical from build to build, so keep them. The cache is read on
+      # every run and written by the first successful one for a given pin; a miss only costs time.
+      - name: Restore build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.mozbuild
+            build/cache
+          key: build-v1-${{ hashFiles('upstream/PIN') }}-${{ inputs.abi }}
+          restore-keys: |
+            build-v1-${{ hashFiles('upstream/PIN') }}-
+
       - name: Fetch Firefox for Android source
         run: scripts/fetch-upstream.sh
 
@@ -43,52 +79,62 @@ jobs:
         run: scripts/bootstrap-android.sh
 
       - name: Build
+        env:
+          SAHARA_ABI: ${{ inputs.abi }}
+          VARIANT: ${{ inputs.variant }}
         run: |
-          scripts/build.sh "${{ inputs.variant }}"
+          scripts/build.sh "$VARIANT"
           df -h /
 
-      - name: Sign
-        id: sign
+      - name: Name the APK
+        id: meta
+        env:
+          ABI: ${{ inputs.abi }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          source upstream/PIN
+          echo "artifact=sahara-${ABI}-${VARIANT}-apk" >> "$GITHUB_OUTPUT"
+          echo "file=sahara-${SAHARA_UPSTREAM_VERSION}-${ABI}-${VARIANT}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Sign (release)
         if: inputs.variant == 'release'
         env:
           KEYSTORE_B64: ${{ secrets.SAHARA_KEYSTORE_BASE64 }}
           SECRET_PASS: ${{ secrets.SAHARA_KEYSTORE_PASS }}
           SECRET_ALIAS: ${{ secrets.SAHARA_KEY_ALIAS }}
+          ABI: ${{ inputs.abi }}
+          OUT_FILE: ${{ steps.meta.outputs.file }}
         run: |
           set -euo pipefail
-          source upstream/PIN
           unsigned="$(find build/upstream/objdir-sahara/gradle/build/mobile/android/fenix/app/outputs/apk \
-            -name 'fenix-arm64-v8a-release-unsigned.apk' | head -n 1)"
+            -name "fenix-${ABI}-release-unsigned.apk" | head -n 1)"
           mkdir -p dist
           export SAHARA_KEYSTORE="$RUNNER_TEMP/sahara.keystore"
           if [ -n "$KEYSTORE_B64" ] && [ -n "$SECRET_PASS" ]; then
             printf '%s' "$KEYSTORE_B64" | base64 -d > "$SAHARA_KEYSTORE"
             export SAHARA_KEYSTORE_PASS="$SECRET_PASS"
             export SAHARA_KEY_ALIAS="${SECRET_ALIAS:-sahara}"
-            echo "signing=permanent" >> "$GITHUB_OUTPUT"
           else
-            # No secrets configured yet: sign with a throw-away key so the APK can still be installed
-            # for a first test. Such builds cannot be updated in place by a later build.
+            # No secrets configured (the current, intended setup): sign with a throw-away key. Such a build
+            # cannot be updated in place by the next one, so uninstall the old build before installing it.
             export SAHARA_KEYSTORE_PASS="$(openssl rand -hex 24)"
             scripts/make-keystore.sh "$SAHARA_KEYSTORE" > /dev/null
-            echo "signing=temporary" >> "$GITHUB_OUTPUT"
             {
-              echo "### Temporary signing key"
-              echo "No signing secrets are set, so this APK was signed with a one-off key. Installing a later build"
-              echo "signed with your permanent key will require uninstalling this one first."
+              echo "### One-off signing key"
+              echo "This APK is signed with a key made for this build only. Uninstall the previous Sahara before installing it."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
-          out="dist/sahara-${SAHARA_UPSTREAM_VERSION}-arm64-release.apk"
-          scripts/sign-apk.sh "$unsigned" "$out"
-          echo "apk=$out" >> "$GITHUB_OUTPUT"
+          scripts/sign-apk.sh "$unsigned" "dist/${OUT_FILE}"
 
       - name: Collect debug APK
         if: inputs.variant == 'debug'
+        env:
+          ABI: ${{ inputs.abi }}
+          OUT_FILE: ${{ steps.meta.outputs.file }}
         run: |
-          source upstream/PIN
           mkdir -p dist
           cp "$(find build/upstream/objdir-sahara/gradle/build/mobile/android/fenix/app/outputs/apk \
-            -name 'fenix-arm64-v8a-debug.apk' | head -n 1)" "dist/sahara-${SAHARA_UPSTREAM_VERSION}-arm64-debug.apk"
+            -name "fenix-${ABI}-debug.apk" | head -n 1)" "dist/${OUT_FILE}"
 
       - name: Summary
         run: |
@@ -101,18 +147,31 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sahara-${{ inputs.variant }}-apk
+          name: ${{ steps.meta.outputs.artifact }}
           path: dist/*.apk
           retention-days: 14
           if-no-files-found: error
 
+  publish:
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
       - name: Publish release
-        if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
+          ABI: ${{ inputs.abi }}
+          VARIANT: ${{ inputs.variant }}
         run: |
           source upstream/PIN
           gh release create "build-${{ github.run_number }}" dist/*.apk \
             --prerelease \
-            --title "Sahara build ${{ github.run_number }} (Firefox ${SAHARA_UPSTREAM_VERSION}, ${{ inputs.variant }})" \
-            --notes "Built from commit ${{ github.sha }}. Phase 0 build: not yet branded as Sahara."
+            --title "Sahara build ${{ github.run_number }} (Firefox ${SAHARA_UPSTREAM_VERSION}, ${ABI}, ${VARIANT})" \
+            --notes "Built from commit ${{ github.sha }}."

@@ -1,0 +1,116 @@
+name: Emulator test
+
+# Builds an x86_64 APK (GitHub's emulators are x86; the phone build is arm64) and runs it on an Android
+# emulator: install, launch, load a page, screenshots, crash scan. Manual only.
+#
+# Fixing the test script itself? Pass the run id of an earlier "Build Sahara"/"Emulator test" build as
+# apk_run_id and the (long) build is skipped; only the emulator part runs.
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Build variant to test
+        type: choice
+        options: [release, debug]
+        default: release
+      apk_run_id:
+        description: Reuse the x86_64 APK artifact of this earlier run id instead of building
+        type: string
+        default: ""
+      expect_package:
+        description: Application id the APK must have (empty = do not check)
+        type: string
+        default: ""
+      expect_label:
+        description: Launcher label the APK must have (empty = do not check)
+        type: string
+        default: ""
+      api_level:
+        description: Android API level of the emulator
+        type: string
+        default: "35"
+
+jobs:
+  build:
+    if: inputs.apk_run_id == ''
+    uses: ./.github/workflows/build.yml
+    # The called workflow has a publish job that asks for contents: write (it is skipped here, but GitHub
+    # checks the request statically), so the caller has to allow it.
+    permissions:
+      contents: write
+    with:
+      variant: ${{ inputs.variant }}
+      abi: x86_64
+      publish: false
+
+  test:
+    needs: [build]
+    # Run when the build succeeded, or was skipped because an earlier run's APK is being reused.
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM (hardware acceleration for the emulator)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - name: Get the APK from this run's build
+        if: inputs.apk_run_id == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: sahara-x86_64-${{ inputs.variant }}-apk
+          path: apk
+
+      - name: Get the APK from an earlier run
+        if: inputs.apk_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: sahara-x86_64-${{ inputs.variant }}-apk
+          path: apk
+          run-id: ${{ inputs.apk_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+
+      - name: Tools for the checks
+        run: |
+          python3 -m pip install --user pillow
+          ls -l apk
+
+      - name: Run the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          EXPECT_PACKAGE: ${{ inputs.expect_package }}
+          EXPECT_LABEL: ${{ inputs.expect_label }}
+        with:
+          api-level: ${{ inputs.api_level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          heap-size: 576M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/emulator-smoke-test.sh apk/*.apk test-results
+
+      - name: Show the report
+        if: always()
+        run: |
+          if [ -f test-results/report.md ]; then cat test-results/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-results
+          path: test-results
+          retention-days: 14
+          if-no-files-found: warn

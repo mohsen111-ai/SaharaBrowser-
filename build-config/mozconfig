@@ -9,10 +9,11 @@ ac_add_options --enable-artifact-builds
 # Fenix only (skips Focus and the sample apps).
 ac_add_options --enable-android-subproject=fenix
 
-# One phone, one ABI.
-ac_add_options --target=aarch64-linux-android
+# One ABI per build. scripts/build.sh fills in the target: aarch64-linux-android for the phone (arm64-v8a),
+# x86_64-linux-android for the CI emulator test.
+ac_add_options --target=@TARGET@
 
-# Resolve Mozilla's published release GeckoView (org.mozilla.geckoview:geckoview-omni-arm64-v8a:<version>)
+# Resolve Mozilla's published release GeckoView (org.mozilla.geckoview:geckoview-omni-<abi>:<version>)
 # instead of expecting a locally built one. The release channel drops the channel suffix from the
 # artifact name; MOZILLA_OFFICIAL drops "-SNAPSHOT" and adds the ABI suffix.
 ac_add_options --enable-update-channel=release

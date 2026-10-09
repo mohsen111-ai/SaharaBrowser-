@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build the Sahara APK from the pinned upstream: fetch, apply overlay and patches, configure, assemble.
 #
-# Usage: scripts/build.sh [debug|release]       (default: debug)
+# Usage: [SAHARA_ABI=arm64-v8a|x86_64] scripts/build.sh [debug|release]       (default: arm64-v8a, debug)
+#   arm64-v8a is the phone build. x86_64 exists only so CI can run the app on an x86 Android emulator;
+#   Mozilla publishes a GeckoView for each ABI under the same build ID.
 #
 # Prerequisite, once per machine: scripts/bootstrap-android.sh (needs scripts/fetch-upstream.sh first;
 # this script runs the fetch itself and skips it when the tree is already extracted).
@@ -19,12 +21,19 @@ MOZBUILD="${MOZBUILD_STATE_PATH:-$HOME/.mozbuild}"
 
 die() { echo "build: $*" >&2; exit 1; }
 
+abi="${SAHARA_ABI:-arm64-v8a}"
+case "$abi" in
+  arm64-v8a) target="aarch64-linux-android" ;;
+  x86_64) target="x86_64-linux-android" ;;
+  *) die "unsupported SAHARA_ABI: $abi (use arm64-v8a or x86_64)" ;;
+esac
+
 variant="${1:-debug}"
 case "$variant" in
-  debug) task="fenix:assembleDebug"; apk_glob="fenix-arm64-v8a-debug.apk"; extra_args=() ;;
+  debug) task="fenix:assembleDebug"; apk_glob="fenix-$abi-debug.apk"; extra_args=() ;;
   # Upstream signs release builds with the public Android debug key unless told not to. We want them
   # unsigned so that scripts/sign-apk.sh is the only thing that signs, with our own key.
-  release) task="fenix:assembleRelease"; apk_glob="fenix-arm64-v8a-release-unsigned.apk"; extra_args=(-PdisableDebugSigning) ;;
+  release) task="fenix:assembleRelease"; apk_glob="fenix-$abi-release-unsigned.apk"; extra_args=(-PdisableDebugSigning) ;;
   *) die "unknown variant: $variant (use debug or release)" ;;
 esac
 
@@ -40,7 +49,7 @@ else
 fi
 
 echo "== configure"
-cp "$ROOT/build-config/mozconfig" "$TREE/mozconfig"
+sed "s|@TARGET@|$target|" "$ROOT/build-config/mozconfig" > "$TREE/mozconfig"
 export MOZ_BUILD_DATE="$SAHARA_GECKOVIEW_BUILDID"      # selects Mozilla's published GeckoView build
 export NIMBUS_FML="$MOZBUILD/nimbus-fml/nimbus-fml"
 (cd "$TREE" && ./mach configure)

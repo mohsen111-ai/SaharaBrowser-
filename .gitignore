@@ -1,0 +1,15 @@
+# Downloaded upstream tarball and the patched tree
+/build/
+
+# Signing material must never be committed
+*.keystore
+*.jks
+*.p12
+keystore.properties
+local.properties
+
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store
+*.swp

@@ -1,0 +1,118 @@
+name: Build Sahara
+
+# Manual only: a build is long and heavy, so it never runs by accident.
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Build variant
+        type: choice
+        options: [release, debug]
+        default: release
+      publish:
+        description: Attach the APK to a GitHub release (easiest to download on a phone)
+        type: boolean
+        default: false
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    permissions:
+      contents: write   # only used when "publish" is ticked
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          # The build needs roughly 20 GB. Remove large preinstalled toolchains we do not use.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Fetch Firefox for Android source
+        run: scripts/fetch-upstream.sh
+
+      - name: Install build toolchains
+        run: scripts/bootstrap-android.sh
+
+      - name: Build
+        run: |
+          scripts/build.sh "${{ inputs.variant }}"
+          df -h /
+
+      - name: Sign
+        id: sign
+        if: inputs.variant == 'release'
+        env:
+          KEYSTORE_B64: ${{ secrets.SAHARA_KEYSTORE_BASE64 }}
+          SECRET_PASS: ${{ secrets.SAHARA_KEYSTORE_PASS }}
+          SECRET_ALIAS: ${{ secrets.SAHARA_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          source upstream/PIN
+          unsigned="$(find build/upstream/objdir-sahara/gradle/build/mobile/android/fenix/app/outputs/apk \
+            -name 'fenix-arm64-v8a-release-unsigned.apk' | head -n 1)"
+          mkdir -p dist
+          export SAHARA_KEYSTORE="$RUNNER_TEMP/sahara.keystore"
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$SECRET_PASS" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$SAHARA_KEYSTORE"
+            export SAHARA_KEYSTORE_PASS="$SECRET_PASS"
+            export SAHARA_KEY_ALIAS="${SECRET_ALIAS:-sahara}"
+            echo "signing=permanent" >> "$GITHUB_OUTPUT"
+          else
+            # No secrets configured yet: sign with a throw-away key so the APK can still be installed
+            # for a first test. Such builds cannot be updated in place by a later build.
+            export SAHARA_KEYSTORE_PASS="$(openssl rand -hex 24)"
+            scripts/make-keystore.sh "$SAHARA_KEYSTORE" > /dev/null
+            echo "signing=temporary" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Temporary signing key"
+              echo "No signing secrets are set, so this APK was signed with a one-off key. Installing a later build"
+              echo "signed with your permanent key will require uninstalling this one first."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          out="dist/sahara-${SAHARA_UPSTREAM_VERSION}-arm64-release.apk"
+          scripts/sign-apk.sh "$unsigned" "$out"
+          echo "apk=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Collect debug APK
+        if: inputs.variant == 'debug'
+        run: |
+          source upstream/PIN
+          mkdir -p dist
+          cp "$(find build/upstream/objdir-sahara/gradle/build/mobile/android/fenix/app/outputs/apk \
+            -name 'fenix-arm64-v8a-debug.apk' | head -n 1)" "dist/sahara-${SAHARA_UPSTREAM_VERSION}-arm64-debug.apk"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Build result"
+            echo '```'
+            (cd dist && sha256sum ./*.apk && ls -lh ./*.apk)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sahara-${{ inputs.variant }}-apk
+          path: dist/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source upstream/PIN
+          gh release create "build-${{ github.run_number }}" dist/*.apk \
+            --prerelease \
+            --title "Sahara build ${{ github.run_number }} (Firefox ${SAHARA_UPSTREAM_VERSION}, ${{ inputs.variant }})" \
+            --notes "Built from commit ${{ github.sha }}. Phase 0 build: not yet branded as Sahara."

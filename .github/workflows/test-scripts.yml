@@ -1,0 +1,21 @@
+name: Test scripts
+
+# Cheap check (seconds, offline): the fetch/apply tooling still behaves.
+on:
+  push:
+    paths: ["scripts/**", "upstream/**", "patches/**", ".github/workflows/test-scripts.yml"]
+  pull_request:
+    paths: ["scripts/**", "upstream/**", "patches/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+      - name: Self-test
+        run: scripts/test.sh

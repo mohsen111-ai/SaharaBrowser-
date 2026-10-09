@@ -1,12 +1,13 @@
 # Upstream Firefox for Android that Sahara is built on.
 # Sourced by scripts/*.sh. Update with scripts/bump-upstream.sh, never by hand.
 #
-# Verified 2026-10-09:
+# Resolved 2026-10-09:
 #   - tag and changeset from https://hg-edge.mozilla.org/releases/mozilla-release/json-tags
-#   - tarball SHA-256 matches Mozilla's published SHA256SUMS and a full streamed download
-#   - tarball contains mobile/android/{fenix,android-components,geckoview}
+#   - tarball SHA-256 from Mozilla's published SHA256SUMS
+#   - GeckoView build ID from maven.mozilla.org (org.mozilla.geckoview:geckoview-omni-arm64-v8a:<major>.<minor>.<id>)
 SAHARA_UPSTREAM_VERSION=157.0.1
 SAHARA_UPSTREAM_TAG=FIREFOX-ANDROID_157_0_1_RELEASE
 SAHARA_UPSTREAM_HG_NODE=737ec77d798755890b062aab541a90d6c75afd19
 SAHARA_UPSTREAM_URL=https://archive.mozilla.org/pub/firefox/releases/157.0.1/source/firefox-157.0.1.source.tar.xz
 SAHARA_UPSTREAM_SHA256=483bedee9059df2479e4531c443b1073c6ebaed3570bda0c164eb562ee241c4c
+SAHARA_GECKOVIEW_BUILDID=20261005135250

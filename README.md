@@ -3,9 +3,9 @@
 A fast, quiet, desert-themed Android browser for personal use, built as a fork of Firefox for Android
 (Fenix on GeckoView). Mascot: **Rimal the camel**.
 
-> **Status: planning and build scaffolding.** There is no browser code yet. The pinned upstream, the
-> fetch/patch tooling and the plans below are in place and tested; the first milestone is building the
-> unmodified upstream into an APK (see [docs/BUILD.md](docs/BUILD.md)).
+> **Status: build pipeline works; no Sahara features yet.** The pinned Firefox for Android 157.0.1 builds
+> into an arm64 APK from a pristine tree using the scripts below (not yet run on a phone). The APK is still
+> plain Firefox; the plans below describe what comes next. See [docs/BUILD.md](docs/BUILD.md).
 
 ## What makes it Sahara
 
@@ -40,6 +40,11 @@ scripts/fetch-upstream.sh    # download (~0.8 GB), verify SHA-256, extract to bu
 scripts/apply-overlay.sh     # add overlay files, apply patches
 scripts/test.sh              # self-test of the tooling (offline, uses a fake tarball)
 scripts/bump-upstream.sh     # move the pin to the newest final release (review the diff)
+
+scripts/bootstrap-android.sh # once per machine: JDK, Android SDK, nimbus-fml
+scripts/build.sh release     # build the arm64 APK (unsigned); see docs/BUILD.md
+scripts/make-keystore.sh     # create the signing key (once, keep it forever)
+scripts/sign-apk.sh          # align and sign the APK with that key
 ```
 
 ## Docs

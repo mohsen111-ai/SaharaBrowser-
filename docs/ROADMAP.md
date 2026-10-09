@@ -22,8 +22,8 @@ Nothing below is implemented yet except where ticked.
 - [x] Pinned upstream, verified (tag, changeset, tarball SHA-256, contents)
 - [x] `fetch-upstream.sh`, `apply-overlay.sh`, `bump-upstream.sh`, offline self-test (`scripts/test.sh`)
 - [x] Architecture, design spec, per-feature plans
-- [ ] Unmodified pinned upstream builds into an arm64 APK ([BUILD.md](BUILD.md))
-- [ ] CI workflow (manual trigger) that builds, signs and uploads the APK
+- [x] Unmodified pinned upstream builds into an arm64 APK, from a pristine tree, via scripts ([BUILD.md](BUILD.md))
+- [ ] CI workflow (manual trigger) that builds, signs and uploads the APK: written, not yet run
 - [ ] Signing key created and stored as CI secrets
 
 ### Phase 1: identity and theme

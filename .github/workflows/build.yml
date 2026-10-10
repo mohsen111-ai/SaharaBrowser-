@@ -118,7 +118,7 @@ jobs:
             # No secrets configured (the current, intended setup): sign with a throw-away key. Such a build
             # cannot be updated in place by the next one, so uninstall the old build before installing it.
             export SAHARA_KEYSTORE_PASS="$(openssl rand -hex 24)"
-            scripts/make-keystore.sh "$SAHARA_KEYSTORE" > /dev/null
+            SAHARA_QUIET=1 scripts/make-keystore.sh "$SAHARA_KEYSTORE"
             {
               echo "### One-off signing key"
               echo "This APK is signed with a key made for this build only. Uninstall the previous Sahara before installing it."

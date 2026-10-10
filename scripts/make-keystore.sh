@@ -21,13 +21,20 @@ command -v keytool >/dev/null || die "keytool not found (it ships with the JDK; 
 
 keytool -genkeypair -storetype PKCS12 -keystore "$out" -alias "$alias_name" \
   -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=Sahara, O=Personal" \
-  -storepass:env SAHARA_KEYSTORE_PASS -keypass:env SAHARA_KEYSTORE_PASS
-
+  -storepass:env SAHARA_KEYSTORE_PASS -keypass:env SAHARA_KEYSTORE_PASS \
+  || die "keytool could not create the key (exit $?)"
+[[ -s "$out" ]] || die "keytool reported success but $out is missing or empty"
 chmod 600 "$out"
+
+# SAHARA_QUIET=1 (used by CI) skips the human-oriented instructions below.
+[[ -z "${SAHARA_QUIET:-}" ]] || exit 0
+
 echo
 echo "created $out (alias: $alias_name)"
 echo "certificate fingerprint (write this down; every future build must show the same one):"
-keytool -list -keystore "$out" -alias "$alias_name" -storepass:env SAHARA_KEYSTORE_PASS | grep -i "fingerprint"
+listing="$(keytool -list -keystore "$out" -alias "$alias_name" -storepass:env SAHARA_KEYSTORE_PASS 2>&1)" \
+  || die "created $out but could not read it back: $listing"
+grep -i "fingerprint" <<<"$listing" || echo "(fingerprint line not found in keytool output)"
 echo
 echo "For GitHub Actions, add these repository secrets (Settings > Secrets and variables > Actions):"
 echo "  SAHARA_KEYSTORE_BASE64  = output of: base64 -w0 $out"

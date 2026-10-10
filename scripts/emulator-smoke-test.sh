@@ -53,9 +53,13 @@ print(" | ".join(seen[:60]))
 PY
 }
 
-find_aapt2() {
-  local sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/.mozbuild/android-sdk-linux}}"
-  ls -d "$sdk"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1
+find_aapt2() {  # first SDK that actually has build-tools (ANDROID_HOME may point at a deleted directory)
+  local sdk found
+  for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/.mozbuild/android-sdk-linux" /usr/local/lib/android/sdk; do
+    [[ -n "$sdk" ]] || continue
+    found="$(ls -d "$sdk"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1)" || true
+    [[ -n "$found" ]] && { echo "$found"; return; }
+  done
 }
 
 say "# Emulator smoke test"

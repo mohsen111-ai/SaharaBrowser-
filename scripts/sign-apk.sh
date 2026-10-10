@@ -21,10 +21,18 @@ in="$1"; out="$2"
 export SAHARA_KEY_PASS="${SAHARA_KEY_PASS:-$SAHARA_KEYSTORE_PASS}"
 alias_name="${SAHARA_KEY_ALIAS:-sahara}"
 
+# Find build-tools in the SDK that the build installed, falling back to ANDROID_HOME. ANDROID_HOME is tried
+# last because it can point at a directory that no longer exists (the CI job deletes the runner's own SDK).
 MOZBUILD="${MOZBUILD_STATE_PATH:-$HOME/.mozbuild}"
-sdk="${ANDROID_HOME:-$MOZBUILD/android-sdk-linux}"
-bt="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1)"
-[[ -n "$bt" ]] || die "no Android build-tools under $sdk"
+bt=""
+for sdk in "$MOZBUILD/android-sdk-linux" "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
+  [[ -n "$sdk" && -d "$sdk/build-tools" ]] || continue
+  bt="$(ls -d "$sdk"/build-tools/*/ 2>/dev/null | sort -V | tail -n 1)" || bt=""
+  bt="${bt%/}"
+  [[ -n "$bt" && -x "$bt/apksigner" ]] && break
+  bt=""
+done
+[[ -n "$bt" ]] || die "no Android build-tools with apksigner under $MOZBUILD/android-sdk-linux, \$ANDROID_HOME or \$ANDROID_SDK_ROOT"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

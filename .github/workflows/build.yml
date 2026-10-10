@@ -59,9 +59,11 @@ jobs:
           df -h /
 
       # Dependencies and toolchains are identical from build to build, so keep them. The cache is read on
-      # every run and written by the first successful one for a given pin; a miss only costs time.
+      # every run and written right after the build succeeds (not at the end of the job, so a later failure
+      # in signing or packaging does not throw away an hour of downloads); a miss only costs time.
       - name: Restore build caches
-        uses: actions/cache@v4
+        id: cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.gradle/caches
@@ -85,6 +87,17 @@ jobs:
         run: |
           scripts/build.sh "$VARIANT"
           df -h /
+
+      - name: Save build caches
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.mozbuild
+            build/cache
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       - name: Name the APK
         id: meta
@@ -144,6 +157,15 @@ jobs:
             (cd dist && sha256sum ./*.apk && ls -lh ./*.apk)
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the unsigned APK if signing failed
+        if: failure() && inputs.variant == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-${{ steps.meta.outputs.artifact }}
+          path: build/upstream/objdir-sahara/gradle/build/mobile/android/fenix/app/outputs/apk/release/*-release-unsigned.apk
+          retention-days: 3
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
